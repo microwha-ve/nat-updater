@@ -89,111 +89,173 @@ def isCurrentlyValid(validity):
 
 def getNATS():
     """
-    Download and parse NAT tracks from FAA website
+    Download and parse NAT tracks from FAA NMS JSON endpoint.
+    Uses only: requests, re, os, sys, time, datetime
     """
+
     print("Connecting to FAA NAT server...")
-    
-    # Try multiple URLs and methods
-    urls = [
-        "https://notams.aim.faa.gov/nat.html",
-        "https://www.notams.faa.gov/common/nat.html"
-    ]
-    
-    # Headers to simulate a browser
+
+    url = "https://nms.aim.faa.gov/datanat/nat.json"
+
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Connection': 'keep-alive',
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://nms.aim.faa.gov/nat",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Connection": "keep-alive",
     }
-    
+
     content = None
     lastError = None
-    
-    for url in urls:
-        print(f"Trying: {url}")
-        for attempt in range(3):  # 3 attempts per URL
+
+    for attempt in range(1, 4):
+        try:
+            print(f"Trying: {url}")
+            print(f"  Attempt {attempt}/3...", end=" ")
+
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=30,
+                verify=True,
+                allow_redirects=True
+            )
+
+            response.raise_for_status()
+
+            print(f"Success! HTTP {response.status_code}, {len(response.text)} bytes")
+
+            data = response.json()
+
+            if not isinstance(data, list):
+                raise Exception("NAT JSON was not a list")
+
+            messages = []
+
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+
+                msg = item.get("condition_message", "")
+                if msg:
+                    messages.append(msg)
+
+            if not messages:
+                raise Exception("NAT JSON downloaded, but no condition_message fields were found")
+
+            content = "\n".join(messages)
+
+        except requests.exceptions.SSLError as e:
+            lastError = str(e)
+            print("SSL error.")
+
             try:
-                print(f"  Attempt {attempt + 1}/3...", end=" ")
+                print("  Retrying without SSL verification...", end=" ")
+
                 response = requests.get(
                     url,
                     headers=headers,
-                    timeout=30,  # Increased timeout
-                    verify=True  # SSL verification
+                    timeout=30,
+                    verify=False,
+                    allow_redirects=True
                 )
+
                 response.raise_for_status()
-                content = response.content.decode("UTF-8")
-                print("Success!")
+
+                print(f"Success! HTTP {response.status_code}, {len(response.text)} bytes")
+
+                data = response.json()
+
+                if not isinstance(data, list):
+                    raise Exception("NAT JSON was not a list")
+
+                messages = []
+
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+
+                    msg = item.get("condition_message", "")
+                    if msg:
+                        messages.append(msg)
+
+                if not messages:
+                    raise Exception("NAT JSON downloaded, but no condition_message fields were found")
+
+                content = "\n".join(messages)
                 break
-            except requests.exceptions.SSLError as e:
-                print("SSL Error, trying without verification...")
-                try:
-                    response = requests.get(url, headers=headers, timeout=30, verify=False)
-                    response.raise_for_status()
-                    content = response.content.decode("UTF-8")
-                    print("Success!")
-                    break
-                except Exception as e2:
-                    lastError = str(e2)
-                    print(f"Failed: {e2}")
-            except requests.exceptions.Timeout:
-                lastError = "Connection timeout"
-                print("Timeout!")
-                time.sleep(2)  # Wait before retry
-            except requests.exceptions.RequestException as e:
-                lastError = str(e)
-                print(f"Failed: {e}")
+
+            except Exception as e2:
+                lastError = str(e2)
+                print(f"Failed: {e2}")
                 time.sleep(2)
-        
-        if content:
-            break
-    
+
+        except requests.exceptions.Timeout:
+            lastError = "Connection timeout"
+            print("Timeout.")
+            time.sleep(2)
+
+        except requests.exceptions.RequestException as e:
+            lastError = str(e)
+            print(f"Failed: {e}")
+            time.sleep(2)
+
+        except Exception as e:
+            lastError = str(e)
+            print(f"Failed: {e}")
+            time.sleep(2)
+
     if not content:
-        print(f"\nScript couldn't download necessary data.")
+        print("\nScript couldn't download necessary NAT data.")
         print(f"Last error: {lastError}")
-        print("\nPossible solutions:")
-        print("1. Check your internet connection")
-        print("2. Check if a firewall/antivirus is blocking the connection")
-        print("3. Try running the script with administrator privileges")
-        print("4. The FAA server might be temporarily down")
         input("\nPress ENTER to exit")
         raise SystemExit()
-    
-    try:
-        print("\nParsing NAT tracks...")
-        allTracks = parseHTML(content)
-        
-        if not allTracks:
-            print("Warning: No tracks found in the downloaded data.")
-            print("The website format might have changed.")
-            input("Press ENTER to exit")
-            raise SystemExit()
-        
-        # Filter only currently valid tracks
-        validTracks = []
-        latestValidUntil = 0
-        
-        for track in allTracks:
-            if isCurrentlyValid(track['validity']):
-                validTracks.append(track)
-                endTime = track['validity']['end']['time']
-                if endTime > latestValidUntil:
-                    latestValidUntil = endTime
-        
-        if len(validTracks) == 0:
-            print("No NATs are active at the moment.")
-            print(f"Found {len(allTracks)} tracks total, but none are currently valid.")
-            input("Press ENTER to exit")
-            raise SystemExit()
-        
-        print(f"Found {len(validTracks)} active NAT track(s).")
-        return validTracks, latestValidUntil
-    
-    except Exception as e:
-        print(f"\nAn error occurred while parsing NATs: {e}")
-        print("\nThe website format might have changed.")
+
+    print("\nParsing NAT tracks...")
+    allTracks = parseHTML(content)
+
+    if not allTracks:
+        print("Warning: No tracks found in the downloaded NAT data.")
+        print("FAA might have changed URL... again...")
         input("Press ENTER to exit")
         raise SystemExit()
+
+    validTracks = []
+    latestValidUntil = 0
+
+    for track in allTracks:
+        if isCurrentlyValid(track["validity"]):
+            validTracks.append(track)
+
+            endTime = track["validity"]["end"]["time"]
+            if endTime > latestValidUntil:
+                latestValidUntil = endTime
+
+    if len(validTracks) == 0:
+        print("No NATs are active at the moment.")
+        print(f"Found {len(allTracks)} tracks total, but none are currently valid.")
+
+        print("\nDownloaded tracks:")
+        for track in allTracks:
+            v = track["validity"]
+            print(
+                f"  NAT {track['id']}: "
+                f"{v['start']['month']} {v['start']['day']:02d}/{v['start']['time']:04d}Z "
+                f"TO "
+                f"{v['end']['month']} {v['end']['day']:02d}/{v['end']['time']:04d}Z"
+            )
+
+        input("Press ENTER to exit")
+        raise SystemExit()
+
+    print(f"Found {len(validTracks)} active NAT track(s).")
+    return validTracks, latestValidUntil
 
 def getAuroraPath():
     """
