@@ -90,7 +90,6 @@ def isCurrentlyValid(validity):
 def getNATS():
     """
     Download and parse NAT tracks from FAA NMS JSON endpoint.
-    Uses only: requests, re, os, sys, time, datetime
     """
 
     print("Connecting to FAA NAT server...")
