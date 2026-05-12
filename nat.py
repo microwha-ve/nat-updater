@@ -417,7 +417,7 @@ def main():
     """
     print("=" * 50)
     print("Aurora NAT Updater v3.0")
-    print("\n1.0 by 609402 - Dawid\n2.0 by 598172 - Santiago\n3.0 by 200696 - Joey")
+    print("\n1.0 by 609402 - Dawid\n2.0 by 598172 - Santiago\n3.0 by 200696 - Joey\n4.0 by 675199")
     print("=" * 50)
     print()
     
