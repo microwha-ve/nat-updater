@@ -3,6 +3,7 @@
 - Created by Dawid (609402)
 - Updated to V2.0 by Santiago (598172)
 - Updated/Fixed to V3.0 by Joey (200696)
+- Updated/Fixed to V4.0 by Esther (675199)
 
 ![image](https://github.com/ivao-xa/nat-updater/assets/41238983/e2f6fae3-c018-4f1c-8ff3-388aecf93f82)
 
